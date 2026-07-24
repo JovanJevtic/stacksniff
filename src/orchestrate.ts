@@ -1,4 +1,4 @@
-import { probe, type ProbeOptions, type ProbeResult } from './probe.js';
+import { probeOnBrowser, launchArgs, type ProbeOptions, type ProbeResult } from './probe.js';
 
 /**
  * Collapse a URL list to one URL per host. A crawl that probes ten pages of the
@@ -22,6 +22,21 @@ export function dedupeByHost(urls: string[]): string[] {
   return out;
 }
 
+/**
+ * Parse a newline-separated list of URLs (a file, or stdin). Blank lines and
+ * `#` comments are dropped; bare hosts get an `https://` prefix so a plain
+ * domain list works as-is.
+ */
+export function parseUrlList(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    out.push(/^https?:\/\//i.test(line) ? line : `https://${line}`);
+  }
+  return out;
+}
+
 export interface ProbeManyOptions extends ProbeOptions {
   /** Max pages fetched at once. Default 8. */
   concurrency?: number;
@@ -41,28 +56,38 @@ export type SettledProbe =
  * batch — a long crawl must survive its own bad URLs.
  */
 export async function probeMany(urls: string[], options: ProbeManyOptions = {}): Promise<SettledProbe[]> {
-  const { concurrency = 8, perHostOnce = true, onSettled, ...probeOptions } = options;
+  const { concurrency = 8, perHostOnce = true, onSettled, proxy, noSandbox, ...pageOptions } = options;
   const targets = perHostOnce ? dedupeByHost(urls) : urls.slice();
   const results: SettledProbe[] = new Array(targets.length);
+  if (targets.length === 0) return results;
 
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (true) {
-      const i = next++;
-      if (i >= targets.length) return;
-      const url = targets[i]!;
-      let settled: SettledProbe;
-      try {
-        settled = { url, ok: true, result: await probe(url, probeOptions) };
-      } catch (err) {
-        settled = { url, ok: false, error: err instanceof Error ? err : new Error(String(err)) };
+  // Launch the browser once for the whole batch; each URL runs in its own
+  // context. Browser launch is the expensive part — paying it per URL is what
+  // makes a naive crawler slow.
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch({ args: launchArgs(noSandbox), proxy });
+  try {
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (true) {
+        const i = next++;
+        if (i >= targets.length) return;
+        const url = targets[i]!;
+        let settled: SettledProbe;
+        try {
+          settled = { url, ok: true, result: await probeOnBrowser(browser, url, pageOptions) };
+        } catch (err) {
+          settled = { url, ok: false, error: err instanceof Error ? err : new Error(String(err)) };
+        }
+        results[i] = settled;
+        onSettled?.(settled, i);
       }
-      results[i] = settled;
-      onSettled?.(settled, i);
-    }
-  }
+    };
 
-  const pool = Array.from({ length: Math.min(concurrency, targets.length) }, () => worker());
-  await Promise.all(pool);
+    const pool = Array.from({ length: Math.min(concurrency, targets.length) }, () => worker());
+    await Promise.all(pool);
+  } finally {
+    await browser.close();
+  }
   return results;
 }

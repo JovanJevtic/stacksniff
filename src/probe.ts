@@ -1,3 +1,4 @@
+import type { Browser } from 'playwright';
 import { detectStack, type PageSignals, type StackHit } from './detect.js';
 
 export interface ProxyConfig {
@@ -15,8 +16,8 @@ export interface ProbeOptions {
   proxy?: ProxyConfig;
   /**
    * Block images, fonts and media at the network layer. On by default: the
-   * probe reads structure, not pixels, and blocking heavy resources cuts page
-   * time dramatically on a large crawl.
+   * probe reads structure, not pixels, so on image-heavy pages and large crawls
+   * this saves real bandwidth and time.
    */
   blockResources?: boolean;
   /**
@@ -42,32 +43,23 @@ const DEFAULT_UA =
 
 const BLOCKED_RESOURCES = new Set(['image', 'media', 'font']);
 
+/** Chromium launch args, gated on `noSandbox`. Exported so a shared-browser caller uses the same set. */
+export function launchArgs(noSandbox?: boolean): string[] {
+  return noSandbox ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] : [];
+}
+
+type PageOptions = Pick<ProbeOptions, 'timeoutMs' | 'userAgent' | 'blockResources'>;
+
 /**
- * Fetch a URL with a real headless browser and detect its SaaS/tech stack.
- *
- * Playwright is a peer dependency and imported dynamically, so the detection
- * core stays dependency-free — install a browser only if you actually probe
- * live URLs. One page per call; drive concurrency and per-domain politeness
- * from the caller (see the README).
+ * Probe one URL using an already-launched browser, in its own fresh context
+ * (isolated cookies and storage). This is the unit {@link probeMany} fans out —
+ * one browser, many contexts — so a batch pays the launch cost once.
  */
-export async function probe(url: string, options: ProbeOptions = {}): Promise<ProbeResult> {
-  const {
-    timeoutMs = 20_000,
-    userAgent = DEFAULT_UA,
-    proxy,
-    blockResources = true,
-    noSandbox = false,
-  } = options;
+export async function probeOnBrowser(browser: Browser, url: string, options: PageOptions = {}): Promise<ProbeResult> {
+  const { timeoutMs = 20_000, userAgent = DEFAULT_UA, blockResources = true } = options;
 
-  const { chromium } = await import('playwright');
-
-  const launchArgs = noSandbox
-    ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-    : [];
-
-  const browser = await chromium.launch({ args: launchArgs, proxy });
+  const context = await browser.newContext({ userAgent });
   try {
-    const context = await browser.newContext({ userAgent });
     const page = await context.newPage();
 
     if (blockResources) {
@@ -97,6 +89,24 @@ export async function probe(url: string, options: ProbeOptions = {}): Promise<Pr
       hits: detectStack(signals),
       signals,
     };
+  } finally {
+    await context.close();
+  }
+}
+
+/**
+ * Fetch a single URL with a real headless browser and detect its SaaS/tech
+ * stack. Launches and closes its own browser — for many URLs use
+ * {@link probeMany}, which shares one browser across the batch.
+ *
+ * Playwright is a peer dependency, imported dynamically, so the detection core
+ * stays dependency-free — install a browser only if you actually probe URLs.
+ */
+export async function probe(url: string, options: ProbeOptions = {}): Promise<ProbeResult> {
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch({ args: launchArgs(options.noSandbox), proxy: options.proxy });
+  try {
+    return await probeOnBrowser(browser, url, options);
   } finally {
     await browser.close();
   }

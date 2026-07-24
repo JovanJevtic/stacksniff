@@ -35,6 +35,28 @@ https://www.gymshark.com/  [200]
 
 That's a real run — the output above is what the tool actually prints today.
 
+## Where this fits
+
+"What is this domain actually running?" is the same question behind a few different jobs:
+
+- **Shadow-IT / SaaS discovery** — point it at a list of company domains and get back a per-domain inventory of the SaaS each one exposes on the public web. A first pass at "what are we actually using", before touching SSO logs or expense data.
+- **Access & vendor mapping** — knowing a site runs Stripe, Intercom, a specific EHR or booking tool tells you which vendors an org depends on, and which integrations matter.
+- **Integration targeting** — when you maintain automations against hundreds of SaaS products, detecting which ones a site uses is step zero.
+- **Competitive / market research** — the same signal, aimed at a market instead of your own estate.
+
+Feed a domain list straight in and get a JSON or CSV inventory:
+
+```bash
+$ printf 'gymshark.com\ntechcrunch.com\nlinear.app\n' | npx stacksniff --batch
+[
+  { "url": "https://gymshark.com",   "tools": ["google-tag-manager", "cloudflare", "shopify"] },
+  { "url": "https://techcrunch.com", "tools": ["google-analytics", "microsoft-clarity", "wordpress", "google-tag-manager"] },
+  { "url": "https://linear.app",     "tools": ["stripe", "cloudflare"] }
+]
+
+# or:  npx stacksniff --batch domains.txt --csv > inventory.csv
+```
+
 ## Seen in the wild
 
 Real `probe()` results against a few well-known sites — nothing hand-picked or mocked:
@@ -138,11 +160,22 @@ const detected = results.filter((o) => o.ok);
 
 `dedupeByHost(urls)` is exported on its own — it's the pure, tested politeness rule the scheduler is built on.
 
+## Benchmarks
+
+Run them yourself: `npm run build && npm run bench`.
+
+**Detection is effectively free.** The pure `detectStack()` path — the part you run once per page, potentially millions of times — clears a 24 KB page in **well under a millisecond**: roughly **2,000–3,000 pages/sec on a single core** (Node 20, mid-range laptop). Detection is never the bottleneck; the network is.
+
+**The browser cost is paid once per batch, not once per page.** `probeMany` launches Chromium a single time and runs each URL in its own context, so a batch of *N* sites doesn't pay *N* cold browser starts. That's the difference between a crawler that scales and one that spends most of its wall-clock launching browsers.
+
+The `probe`/`probeMany` wall-clock numbers are network-bound — they depend on your connection and the target sites, not on this library — so this repo ships the benchmark rather than a screenshot of numbers that wouldn't reproduce on your machine. `bench/bench.mjs` measures detection throughput, the resource-blocking trade-off, and serial-vs-pooled crawl time against live sites.
+
 ## Tests
 
 ```bash
-npm test        # vitest, 34 cases, no browser required
+npm test        # vitest, 39 cases, no browser required
 npm run build   # tsc -> dist/
+npm run bench   # detection throughput + live crawl timing
 ```
 
 The detection and canonicalization logic is covered by unit tests over fixture strings — no network, no browser — so the core stays fast to verify and safe to change.

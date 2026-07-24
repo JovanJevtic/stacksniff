@@ -31,7 +31,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bench": "node bench/bench.mjs"
   },
   "peerDependencies": {
     "playwright": ">=1.40.0"
