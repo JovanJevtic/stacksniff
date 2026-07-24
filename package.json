@@ -1,10 +1,13 @@
 {
   "name": "stacksniff",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Detect the SaaS and tech stack a website runs — static signatures plus a headless Playwright probe.",
   "type": "module",
   "license": "MIT",
   "author": "Jovan Jevtić <contact@jjovan.com> (https://jjovan.com)",
+  "bin": {
+    "stacksniff": "./dist/cli.js"
+  },
   "keywords": [
     "playwright",
     "web-scraping",

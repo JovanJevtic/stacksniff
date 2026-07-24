@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { detectStack } from '../src/detect.js';
+import { detectStack, groupByCategory } from '../src/detect.js';
 
 describe('detectStack', () => {
   it('detects calendly from a URL in the HTML', () => {
@@ -64,5 +64,27 @@ describe('detectStack', () => {
     const stripe = r.find((t) => t.tool === 'stripe');
     expect(stripe).toBeDefined();
     expect(stripe!.evidence.length).toBeLessThanOrEqual(200);
+  });
+
+  it('detects a CDN from a response header alone', () => {
+    const r = detectStack({ headers: { 'cf-ray': '8ab12cd34ef56-FRA', server: 'cloudflare' } });
+    expect(r.some((t) => t.tool === 'cloudflare' && t.category === 'cdn')).toBe(true);
+  });
+});
+
+describe('groupByCategory', () => {
+  it('buckets hits by their category', () => {
+    const grouped = groupByCategory([
+      { tool: 'stripe', category: 'payments', confidence: 'high', evidence: 'js.stripe.com' },
+      { tool: 'paypal', category: 'payments', confidence: 'high', evidence: 'paypal.com/sdk/js' },
+      { tool: 'wordpress', category: 'cms', confidence: 'high', evidence: 'wp-content' },
+    ]);
+    expect(grouped.payments).toHaveLength(2);
+    expect(grouped.cms).toHaveLength(1);
+    expect(grouped.analytics).toBeUndefined();
+  });
+
+  it('returns an empty object for no hits', () => {
+    expect(groupByCategory([])).toEqual({});
   });
 });

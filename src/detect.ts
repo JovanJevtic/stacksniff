@@ -3,13 +3,17 @@ import { CMS_TOOL_MAP, SIGNATURES } from './signatures.js';
 export type StackCategory =
   | 'analytics'
   | 'booking'
+  | 'cdn'
   | 'cms'
   | 'ecommerce'
   | 'ehr'
+  | 'error-monitoring'
+  | 'forms'
   | 'marketing'
   | 'payments'
   | 'support'
-  | 'tag-manager';
+  | 'tag-manager'
+  | 'video';
 
 export interface StackHit {
   /** Canonical tool id, e.g. `stripe`, `wordpress`, `calendly`. */
@@ -88,4 +92,13 @@ export function detectStack(signals: PageSignals | null | undefined): StackHit[]
   }
 
   return Array.from(hits.values());
+}
+
+/** Group hits by category, e.g. for rendering or summarising a result set. */
+export function groupByCategory(hits: StackHit[]): Partial<Record<StackCategory, StackHit[]>> {
+  const out: Partial<Record<StackCategory, StackHit[]>> = {};
+  for (const hit of hits) {
+    (out[hit.category] ??= []).push(hit);
+  }
+  return out;
 }

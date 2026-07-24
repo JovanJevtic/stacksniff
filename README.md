@@ -1,6 +1,9 @@
 # stacksniff
 
-Detect the SaaS and tech stack a website runs — a booking tool, an EHR, a CMS, an analytics or support vendor, a payment provider — from **static signatures** plus an optional **headless Playwright probe**.
+[![CI](https://github.com/JovanJevtic/stacksniff/actions/workflows/ci.yml/badge.svg)](https://github.com/JovanJevtic/stacksniff/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
+Detect the SaaS and tech stack a website runs — a booking tool, an EHR, a CMS, an analytics, support or payment vendor, a CDN, an error monitor — from **static signatures** plus an optional **headless Playwright probe**.
 
 The detection core is synchronous and dependency-free: hand it whatever page signals you already have and it returns one deduplicated hit per tool. When you don't have the signals, `probe()` fetches them with a real browser. This is the "what is this site actually running" problem — the same shape as shadow-IT discovery, competitor research, and integration targeting.
 
@@ -13,6 +16,21 @@ detectStack({ html: pageHtml, headers, scriptSrcs });
 
 // 2. You have only a URL — let Playwright fetch the signals:
 const { hits } = await probe('https://example.com');
+```
+
+Or from the command line, without writing any code:
+
+```bash
+npx stacksniff https://example.com
+
+# example.com  [200]
+#
+#   analytics
+#     - google-analytics  (high)
+#   cdn
+#     - cloudflare  (high)
+#   payments
+#     - stripe  (high)
 ```
 
 ## Why two layers
@@ -51,7 +69,9 @@ interface StackHit {
 }
 ```
 
-Every hit carries the substring that produced it, so a result set is auditable — you can see *why* a tool was flagged, not just that it was.
+Every hit carries the substring that produced it, so a result set is auditable — you can see *why* a tool was flagged, not just that it was. `groupByCategory(hits)` buckets a result set by category when you want to render or summarise it.
+
+Categories: `analytics`, `booking`, `cdn`, `cms`, `ecommerce`, `ehr`, `error-monitoring`, `forms`, `marketing`, `payments`, `support`, `tag-manager`, `video`.
 
 ### `probe(url, options?): Promise<ProbeResult>`
 
@@ -87,33 +107,28 @@ Diacritic folding is tuned for South-Slavic names (č, ć, đ, š, ž), and `ext
 
 ## Running many URLs
 
-`probe()` does one page per call on purpose — concurrency and politeness belong to the caller, where they can be tuned to the job. A sketch of the pattern the detector was pulled from:
+`probeMany` runs a batch through a bounded worker pool, collapses to one URL per host by default (probing ten pages of one site learns nothing and looks like an attack), and settles every URL — a dead DNS, parked domain, timeout or bot wall becomes `{ ok: false }` instead of rejecting the whole run.
 
 ```ts
-import pLimit from 'p-limit';
-import { probe } from 'stacksniff';
+import { probeMany } from 'stacksniff';
 
-const limit = pLimit(8);            // global cap
-const seen = new Set<string>();     // one in-flight request per host
+const results = await probeMany(urls, {
+  concurrency: 8,      // max pages in flight
+  perHostOnce: true,   // one URL per host (default)
+  onSettled: (o) => {  // stream results as they land
+    if (o.ok) console.log(o.url, o.result.hits.map((h) => h.tool));
+  },
+});
 
-async function run(urls: string[]) {
-  return Promise.all(urls.map((url) => limit(async () => {
-    const host = new URL(url).host;
-    if (seen.has(host)) return null; // keep it polite: never hammer one host
-    seen.add(host);
-    try {
-      return await probe(url, { blockResources: true });
-    } catch {
-      return null;                   // dead DNS, parked domain, bot wall — skip, don't crash the run
-    }
-  })));
-}
+const detected = results.filter((o) => o.ok);
 ```
+
+`dedupeByHost(urls)` is exported on its own — it's the pure, tested politeness rule the scheduler is built on.
 
 ## Tests
 
 ```bash
-npm test        # vitest, 26 cases, no browser required
+npm test        # vitest, 34 cases, no browser required
 npm run build   # tsc -> dist/
 ```
 

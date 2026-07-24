@@ -38,6 +38,9 @@ export const SIGNATURES: Signature[] = [
   { tool: 'matomo', category: 'analytics', regex: /matomo\.js|piwik\.js/i, confidence: 'high' },
   { tool: 'hotjar', category: 'analytics', regex: /static\.hotjar\.com|hjSetting/i, confidence: 'high' },
   { tool: 'mixpanel', category: 'analytics', regex: /cdn\.mxpanel\.com|api\.mixpanel\.com/i, confidence: 'high' },
+  { tool: 'amplitude', category: 'analytics', regex: /cdn\.amplitude\.com|api\.amplitude\.com/i, confidence: 'high' },
+  { tool: 'microsoft-clarity', category: 'analytics', regex: /clarity\.ms\/tag/i, confidence: 'high' },
+  { tool: 'fathom', category: 'analytics', regex: /cdn\.usefathom\.com/i, confidence: 'high' },
 
   // Tag managers
   { tool: 'google-tag-manager', category: 'tag-manager', regex: /googletagmanager\.com\/gtm\.js|GTM-[A-Z0-9]{4,}/i, confidence: 'high' },
@@ -56,6 +59,28 @@ export const SIGNATURES: Signature[] = [
   // Payments
   { tool: 'stripe', category: 'payments', regex: /js\.stripe\.com/i, confidence: 'high' },
   { tool: 'paypal', category: 'payments', regex: /paypal\.com\/sdk\/js|paypalobjects\.com/i, confidence: 'high' },
+  { tool: 'braintree', category: 'payments', regex: /js\.braintreegateway\.com/i, confidence: 'high' },
+  { tool: 'square', category: 'payments', regex: /(?:web|js)\.squarecdn\.com|squareup\.com\/v2/i, confidence: 'high' },
+
+  // Forms
+  { tool: 'typeform', category: 'forms', regex: /embed\.typeform\.com|typeform\.com\/to\//i, confidence: 'high' },
+  { tool: 'jotform', category: 'forms', regex: /(?:form|cdn)\.jotform\.com/i, confidence: 'high' },
+  { tool: 'google-forms', category: 'forms', regex: /docs\.google\.com\/forms/i, confidence: 'high' },
+
+  // Video
+  { tool: 'youtube', category: 'video', regex: /youtube(?:-nocookie)?\.com\/embed|youtu\.be\//i, confidence: 'high' },
+  { tool: 'vimeo', category: 'video', regex: /player\.vimeo\.com\/video/i, confidence: 'high' },
+  { tool: 'wistia', category: 'video', regex: /fast\.wistia\.(?:com|net)/i, confidence: 'high' },
+
+  // Error monitoring
+  { tool: 'sentry', category: 'error-monitoring', regex: /browser\.sentry-cdn\.com|@sentry\/browser|js\.sentry-cdn\.com/i, confidence: 'high' },
+  { tool: 'bugsnag', category: 'error-monitoring', regex: /d2wy8f7a9ursnm\.cloudfront\.net\/.*bugsnag|bugsnag/i, confidence: 'medium' },
+
+  // CDN / hosting (from response headers as much as body)
+  { tool: 'cloudflare', category: 'cdn', regex: /\bcf-ray\b|__cf_bm|cloudflareinsights\.com/i, confidence: 'high' },
+  { tool: 'vercel', category: 'cdn', regex: /\bx-vercel-id\b|\.vercel\.app|vercel-insights\.com/i, confidence: 'high' },
+  { tool: 'netlify', category: 'cdn', regex: /\bx-nf-request-id\b|\.netlify\.app/i, confidence: 'high' },
+  { tool: 'fastly', category: 'cdn', regex: /\bx-served-by:\s*cache|fastly/i, confidence: 'medium' },
 
   // E-commerce
   { tool: 'shopify', category: 'ecommerce', regex: /cdn\.shopify\.com|myshopify\.com/i, confidence: 'high' },
