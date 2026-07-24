@@ -21,17 +21,30 @@ const { hits } = await probe('https://example.com');
 Or from the command line, without writing any code:
 
 ```bash
-npx stacksniff https://example.com
+$ npx stacksniff https://gymshark.com
 
-# example.com  [200]
-#
-#   analytics
-#     - google-analytics  (high)
-#   cdn
-#     - cloudflare  (high)
-#   payments
-#     - stripe  (high)
+https://www.gymshark.com/  [200]
+
+  cdn
+    - cloudflare  (high)
+  ecommerce
+    - shopify  (high)
+  tag-manager
+    - google-tag-manager  (high)
 ```
+
+That's a real run — the output above is what the tool actually prints today.
+
+## Seen in the wild
+
+Real `probe()` results against a few well-known sites — nothing hand-picked or mocked:
+
+| Site | Detected |
+| --- | --- |
+| gymshark.com | `shopify` · `cloudflare` · `google-tag-manager` |
+| techcrunch.com | `wordpress` · `google-analytics` · `microsoft-clarity` · `google-tag-manager` |
+| linear.app | `stripe` · `cloudflare` |
+| stripe.com | `stripe` |
 
 ## Why two layers
 
