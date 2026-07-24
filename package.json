@@ -1,0 +1,47 @@
+{
+  "name": "stacksniff",
+  "version": "0.1.0",
+  "description": "Detect the SaaS and tech stack a website runs — static signatures plus a headless Playwright probe.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Jovan Jevtić <contact@jjovan.com> (https://jjovan.com)",
+  "keywords": [
+    "playwright",
+    "web-scraping",
+    "tech-detection",
+    "saas-detection",
+    "shadow-it",
+    "fingerprint",
+    "headless-chromium"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "playwright": "^1.44.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
