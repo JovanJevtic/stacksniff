@@ -16,6 +16,7 @@ Single URL:
 Batch / inventory (reads a URL list from <file>, or stdin if omitted):
   --csv           Emit "url,tool,category,confidence" rows instead of JSON
   --concurrency   Pages fetched at once (default 8)
+  --retries       Extra attempts for transient failures (default 0)
 
 Common:
   --no-sandbox    Pass --no-sandbox to Chromium (containers / root)
@@ -47,6 +48,7 @@ async function runBatch(args: string[]): Promise<number> {
   const csv = args.includes('--csv');
   const noSandbox = args.includes('--no-sandbox');
   const concurrency = Number(flag(args, '--concurrency')) || 8;
+  const retries = Number(flag(args, '--retries')) || 0;
   const timeoutMs = flag(args, '--timeout') ? Number(flag(args, '--timeout')) : undefined;
 
   // A positional arg after --batch is a file; otherwise read stdin.
@@ -62,7 +64,7 @@ async function runBatch(args: string[]): Promise<number> {
   }
 
   process.stderr.write(`probing ${urls.length} site(s) at concurrency ${concurrency}…\n`);
-  const settled = await probeMany(urls, { concurrency, noSandbox, timeoutMs });
+  const settled = await probeMany(urls, { concurrency, retries, noSandbox, timeoutMs });
 
   if (csv) {
     process.stdout.write('url,tool,category,confidence\n');
@@ -78,7 +80,7 @@ async function runBatch(args: string[]): Promise<number> {
   const inventory = settled.map((o) =>
     o.ok
       ? { url: o.url, finalUrl: o.result.finalUrl, status: o.result.status, tools: o.result.hits.map((h) => h.tool) }
-      : { url: o.url, error: o.error.message },
+      : { url: o.url, error: o.kind, detail: o.error.message },
   );
   process.stdout.write(JSON.stringify(inventory, null, 2) + '\n');
   return 0;

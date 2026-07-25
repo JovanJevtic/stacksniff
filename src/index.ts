@@ -6,4 +6,6 @@ export { probe } from './probe.js';
 export type { ProbeOptions, ProbeResult, ProxyConfig } from './probe.js';
 export { probeMany, dedupeByHost, parseUrlList } from './orchestrate.js';
 export type { ProbeManyOptions, SettledProbe } from './orchestrate.js';
+export { classifyFailure, isTransient } from './failures.js';
+export type { FailureKind } from './failures.js';
 export { normalizeName, extractCity, canonicalKey } from './canonical.js';

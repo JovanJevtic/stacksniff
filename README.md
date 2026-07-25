@@ -150,15 +150,19 @@ import { probeMany } from 'stacksniff';
 const results = await probeMany(urls, {
   concurrency: 8,      // max pages in flight
   perHostOnce: true,   // one URL per host (default)
+  retries: 1,          // retry transient failures only (timeout, connection)
   onSettled: (o) => {  // stream results as they land
     if (o.ok) console.log(o.url, o.result.hits.map((h) => h.tool));
+    else console.warn(o.url, 'failed:', o.kind);
   },
 });
 
 const detected = results.filter((o) => o.ok);
 ```
 
-`dedupeByHost(urls)` is exported on its own — it's the pure, tested politeness rule the scheduler is built on.
+Each failure is **classified**, not just caught: `o.kind` is one of `timeout`, `dns`, `connection`, `blocked`, `http-error`, `unknown`. That distinction is what makes retrying safe — `retries` only re-attempts *transient* failures (timeout, connection); a dead DNS or a bot wall fails once and moves on, because retrying it just wastes time and looks like hammering. `classifyFailure(err)` and `isTransient(kind)` are exported and unit-tested on their own.
+
+`dedupeByHost(urls)` is likewise exported standalone — the pure, tested politeness rule the scheduler is built on.
 
 ## Benchmarks
 
@@ -173,7 +177,7 @@ The `probe`/`probeMany` wall-clock numbers are network-bound — they depend on 
 ## Tests
 
 ```bash
-npm test        # vitest, 39 cases, no browser required
+npm test        # vitest, 47 cases, no browser required
 npm run build   # tsc -> dist/
 npm run bench   # detection throughput + live crawl timing
 ```

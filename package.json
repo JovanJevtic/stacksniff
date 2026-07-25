@@ -1,6 +1,6 @@
 {
   "name": "stacksniff",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Detect the SaaS and tech stack a website runs — static signatures plus a headless Playwright probe.",
   "type": "module",
   "license": "MIT",

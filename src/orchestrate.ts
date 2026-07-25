@@ -1,4 +1,5 @@
 import { probeOnBrowser, launchArgs, type ProbeOptions, type ProbeResult } from './probe.js';
+import { classifyFailure, isTransient, type FailureKind } from './failures.js';
 
 /**
  * Collapse a URL list to one URL per host. A crawl that probes ten pages of the
@@ -42,13 +43,19 @@ export interface ProbeManyOptions extends ProbeOptions {
   concurrency?: number;
   /** Probe at most one URL per host. Default true. */
   perHostOnce?: boolean;
+  /** Extra attempts for *transient* failures (timeout, connection). Default 0. */
+  retries?: number;
+  /** Base backoff in ms between retries, multiplied by the attempt number. Default 500. */
+  retryBackoffMs?: number;
   /** Called as each result settles — stream results instead of waiting for all. */
   onSettled?: (outcome: SettledProbe, index: number) => void;
 }
 
 export type SettledProbe =
-  | { url: string; ok: true; result: ProbeResult }
-  | { url: string; ok: false; error: Error };
+  | { url: string; ok: true; result: ProbeResult; attempts: number }
+  | { url: string; ok: false; error: Error; kind: FailureKind; attempts: number };
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Probe many URLs with a bounded worker pool. A failed page (dead DNS, parked
@@ -56,7 +63,16 @@ export type SettledProbe =
  * batch — a long crawl must survive its own bad URLs.
  */
 export async function probeMany(urls: string[], options: ProbeManyOptions = {}): Promise<SettledProbe[]> {
-  const { concurrency = 8, perHostOnce = true, onSettled, proxy, noSandbox, ...pageOptions } = options;
+  const {
+    concurrency = 8,
+    perHostOnce = true,
+    retries = 0,
+    retryBackoffMs = 500,
+    onSettled,
+    proxy,
+    noSandbox,
+    ...pageOptions
+  } = options;
   const targets = perHostOnce ? dedupeByHost(urls) : urls.slice();
   const results: SettledProbe[] = new Array(targets.length);
   if (targets.length === 0) return results;
@@ -66,19 +82,34 @@ export async function probeMany(urls: string[], options: ProbeManyOptions = {}):
   // makes a naive crawler slow.
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ args: launchArgs(noSandbox), proxy });
+
+  const settle = async (url: string): Promise<SettledProbe> => {
+    let attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        return { url, ok: true, result: await probeOnBrowser(browser, url, pageOptions), attempts: attempt };
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        const kind = classifyFailure(error);
+        // Retry only transient failures — retrying dead DNS or a bot wall just
+        // wastes time and looks like hammering.
+        if (attempt <= retries && isTransient(kind)) {
+          await delay(retryBackoffMs * attempt);
+          continue;
+        }
+        return { url, ok: false, error, kind, attempts: attempt };
+      }
+    }
+  };
+
   try {
     let next = 0;
     const worker = async (): Promise<void> => {
       while (true) {
         const i = next++;
         if (i >= targets.length) return;
-        const url = targets[i]!;
-        let settled: SettledProbe;
-        try {
-          settled = { url, ok: true, result: await probeOnBrowser(browser, url, pageOptions) };
-        } catch (err) {
-          settled = { url, ok: false, error: err instanceof Error ? err : new Error(String(err)) };
-        }
+        const settled = await settle(targets[i]!);
         results[i] = settled;
         onSettled?.(settled, i);
       }
