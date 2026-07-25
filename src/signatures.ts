@@ -25,10 +25,9 @@ export const CMS_TOOL_MAP: Record<string, string> = {
 };
 
 /**
- * Host- and marker-based signatures. Host signatures (a request to a vendor's
- * CDN or API) are high confidence — you don't load `js.stripe.com` by accident.
- * Bare product-name mentions are medium: they show up in copy and blog posts as
- * often as in an actual integration.
+ * Host- and marker-based signatures. A request to a vendor CDN or API is high
+ * confidence (you don't load js.stripe.com by accident). Bare product-name
+ * mentions are medium; they turn up in copy about as often as in a real setup.
  */
 export const SIGNATURES: Signature[] = [
   // Analytics

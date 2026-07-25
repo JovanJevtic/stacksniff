@@ -2,12 +2,12 @@
 
 [![CI](https://github.com/JovanJevtic/stacksniff/actions/workflows/ci.yml/badge.svg)](https://github.com/JovanJevtic/stacksniff/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A520-339933.svg?logo=node.js&logoColor=white)](#requirements)
+[![Node](https://img.shields.io/badge/node-%E2%89%A520-339933.svg?logo=node.js&logoColor=white)](#development)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](./tsconfig.json)
 
-**Detect the SaaS and tech stack a website runs** — a booking tool, an EHR, a CMS, an analytics, support or payment vendor, a CDN, an error monitor — from **static signatures** plus an optional **headless Playwright probe**.
+Detect what SaaS and tech a website runs: booking tools, EHRs, a CMS, analytics, support and payment vendors, a CDN, an error monitor. It works off static signatures, with an optional headless Playwright fetch for when you only have a URL.
 
-The detection core is synchronous and dependency-free: hand it whatever page signals you already have and it returns one deduplicated hit per tool. When you have only a URL, `probe()` fetches the signals with a real browser. It's the "what is this domain actually running?" question — the one behind shadow-IT discovery, vendor mapping, and integration targeting.
+`detectStack()` is synchronous and has no dependencies. Give it whatever page signals you already have and it returns one hit per tool. If all you have is a URL, `probe()` fetches the signals with Playwright and feeds the same detector.
 
 ## Contents
 
@@ -26,22 +26,22 @@ The detection core is synchronous and dependency-free: hand it whatever page sig
 
 ```bash
 npm install stacksniff
-# Playwright is an optional peer dependency — add it only if you use probe():
+# Playwright is an optional peer dependency. Add it only if you call probe():
 npm install playwright && npx playwright install chromium
 ```
 
 ```ts
 import { detectStack, probe } from 'stacksniff';
 
-// 1. You already have the HTML (from a crawler, a cache, an archive):
+// You already have the HTML (a crawler, a cache, an archive):
 detectStack({ html: pageHtml, headers, scriptSrcs });
 // -> [{ tool: 'stripe', category: 'payments', confidence: 'high', evidence: 'js.stripe.com' }, ...]
 
-// 2. You have only a URL — let Playwright fetch the signals:
+// You only have a URL. Let Playwright fetch the signals:
 const { hits } = await probe('https://example.com');
 ```
 
-Or from the command line, no code required:
+From the command line:
 
 ```console
 $ npx stacksniff https://gymshark.com
@@ -56,11 +56,11 @@ https://www.gymshark.com/  [200]
     - google-tag-manager  (high)
 ```
 
-That output is a real run, not a mock-up.
+That's an actual run, not a mock-up.
 
 ## How it works
 
-Two ways to feed **one** detector. Either give `detectStack()` signals you already have, or let `probe()` fetch them from a live page with Playwright — both converge on the same signature matcher.
+There are two ways to feed one detector: pass `detectStack()` signals you already have, or let `probe()` pull them off a live page with Playwright.
 
 ```mermaid
 flowchart LR
@@ -71,13 +71,13 @@ flowchart LR
     D --> H["StackHit[]<br/>tool · category · confidence · evidence"]
 ```
 
-**Why two layers.** Static signatures are cheap and catch most of it: you don't load `js.stripe.com`, `widget.intercom.io` or `cdn.shopify.com` by accident, so a request to a vendor's host is high-confidence evidence. But much of a modern page is assembled at runtime — scripts injected by a tag manager, cookies set after hydration, widgets that only appear once the DOM settles. `probe()` renders the page and hands the **rendered** HTML, the live script `src` list, the response headers and the cookie names to the exact same `detectStack()`. One detector, two ways to feed it.
+Static signatures cover most of it. A request to `js.stripe.com`, `widget.intercom.io` or `cdn.shopify.com` is strong evidence, since you don't load a vendor's host by accident. The catch is that modern pages assemble a lot at runtime: scripts a tag manager injects, cookies set after hydration, widgets that only show up once the DOM settles. `probe()` renders the page and hands the rendered HTML, the live script `src` list, the response headers and the cookie names to the same `detectStack()`.
 
-Every hit carries the substring that matched, so a result is **auditable** — you see *why* a tool was flagged, not just that it was.
+Every hit keeps the substring that matched, so you can check why a tool was flagged instead of taking the result on faith.
 
 ## Probing a live page
 
-`probe()` is a single, self-contained page fetch: launch, load, collect, detect, close.
+`probe()` is one self-contained page fetch: launch, load, collect, detect, close.
 
 ```mermaid
 flowchart TD
@@ -90,15 +90,15 @@ flowchart TD
     D --> Res["ProbeResult<br/>finalUrl · status · hits · signals"]
 ```
 
-Three choices separate this from a toy fetch:
+A few details it gets right:
 
-- **`domcontentloaded`, not `networkidle`.** Analytics beacons keep a connection warm indefinitely, so `networkidle` routinely times out on live sites. Waiting on a concrete lifecycle event is faster and far more reliable.
-- **Resource blocking by default.** The probe reads structure, not pixels. Aborting images, fonts and media at the network layer saves real bandwidth and time on image-heavy pages and large crawls.
-- **`noSandbox` is opt-in.** In a container running as root, Chromium's setuid sandbox can't initialise and launches fail without `--no-sandbox`; on a normal desktop you keep the sandbox, so it's off unless you ask.
+- It waits on `domcontentloaded`, not `networkidle`. Analytics beacons keep a connection open, so `networkidle` tends to hang until it times out.
+- It blocks images, fonts and media by default. The probe reads markup, not pixels, and dropping those requests saves bandwidth on big crawls.
+- `noSandbox` is off unless you ask. You need it when running as root in a container, where Chromium's sandbox can't start; on a desktop you want the sandbox left on.
 
 ## Crawling many URLs
 
-`probeMany()` fans a batch across a bounded worker pool, launching the browser **once** and running each URL in its own context. Browser launch is the expensive part — paying it per URL is what makes a naive crawler slow.
+`probeMany()` runs a batch on a worker pool. It launches the browser once and gives each URL its own context, and by default it keeps one URL per host.
 
 ```mermaid
 flowchart TD
@@ -114,7 +114,7 @@ flowchart TD
     W3 --> R
 ```
 
-Every URL **settles** — a dead DNS, parked domain, timeout or bot wall becomes `{ ok: false }` instead of rejecting the whole run. And every failure is **classified**, which is what makes retrying safe:
+Every URL settles. A timeout, a dead DNS, a parked domain or a bot wall comes back as `{ ok: false }` with a `kind`, so one bad URL doesn't sink the batch. The `kind` is also what makes a retry sensible:
 
 ```mermaid
 flowchart TD
@@ -133,26 +133,26 @@ import { probeMany } from 'stacksniff';
 const results = await probeMany(urls, {
   concurrency: 8,      // max pages in flight
   perHostOnce: true,   // one URL per host (default)
-  retries: 1,          // retry transient failures only (timeout, connection)
-  onSettled: (o) => {  // stream results as they land
+  retries: 1,          // retry transient failures only
+  onSettled: (o) => {
     if (o.ok) console.log(o.url, o.result.hits.map((h) => h.tool));
     else console.warn(o.url, 'failed:', o.kind);
   },
 });
 ```
 
-`retries` re-attempts only *transient* failures; a dead DNS or a bot wall fails once and moves on, because retrying it just wastes time and looks like hammering. `dedupeByHost()`, `classifyFailure()` and `isTransient()` are all exported standalone and unit-tested.
+`retries` only re-runs transient failures (timeout, connection). A dead DNS or a 403 fails once and moves on; retrying it wastes time and reads as hammering. `dedupeByHost()`, `classifyFailure()` and `isTransient()` are exported on their own and unit-tested.
 
 ## Where this fits
 
-"What is this domain actually running?" is the same question behind several jobs:
+Same question behind a few different tasks: what is this domain actually running?
 
-- **Shadow-IT / SaaS discovery** — point it at a list of company domains and get a per-domain inventory of the SaaS each exposes on the public web. A first pass at "what are we actually using", before touching SSO logs or expense data.
-- **Access & vendor mapping** — knowing a site runs Stripe, Intercom, a specific EHR or booking tool tells you which vendors an org depends on, and which integrations matter.
-- **Integration targeting** — when you maintain automations against hundreds of SaaS products, detecting which ones a site uses is step zero.
-- **Competitive / market research** — the same signal, aimed at a market instead of your own estate.
+- Shadow-IT / SaaS discovery. Point it at a list of company domains, get back what SaaS each one exposes on the public web. A starting point before you dig into SSO logs or expense data.
+- Vendor and access mapping. If a site runs Stripe, Intercom or a particular EHR, you know which vendors it leans on.
+- Integration targeting. If you maintain automations against a lot of SaaS products, knowing which ones a site uses comes first.
+- Competitive research. Same signal, pointed at a market instead of your own estate.
 
-Feed a domain list straight in and get a JSON or CSV inventory:
+Pipe a domain list in and get a JSON or CSV inventory:
 
 ```console
 $ printf 'gymshark.com\ntechcrunch.com\nlinear.app\n' | npx stacksniff --batch
@@ -167,7 +167,7 @@ $ npx stacksniff --batch domains.txt --csv --retries 1 > inventory.csv
 
 ## Seen in the wild
 
-Real `probe()` results against well-known sites — nothing hand-picked or mocked:
+Real `probe()` runs against well-known sites, nothing cherry-picked:
 
 | Site | Detected |
 | --- | --- |
@@ -180,7 +180,7 @@ Real `probe()` results against well-known sites — nothing hand-picked or mocke
 
 ### `detectStack(signals): StackHit[]`
 
-Synchronous, dependency-free. Pass any subset of the signals you have.
+Synchronous, no dependencies. Pass any subset of the signals you have.
 
 ```ts
 interface PageSignals {
@@ -199,9 +199,9 @@ interface StackHit {
 }
 ```
 
-**Categories** (`StackCategory`): `analytics` · `booking` · `cdn` · `cms` · `ecommerce` · `ehr` · `error-monitoring` · `forms` · `marketing` · `payments` · `support` · `tag-manager` · `video`.
+Categories (`StackCategory`): `analytics`, `booking`, `cdn`, `cms`, `ecommerce`, `ehr`, `error-monitoring`, `forms`, `marketing`, `payments`, `support`, `tag-manager`, `video`.
 
-`groupByCategory(hits)` buckets a result set by category for rendering or summarising.
+`groupByCategory(hits)` buckets a result set by category.
 
 ### `probe(url, options?): Promise<ProbeResult>`
 
@@ -211,7 +211,7 @@ interface ProbeOptions {
   userAgent?: string;       // defaults to a current desktop Chrome UA
   proxy?: { server: string; username?: string; password?: string };
   blockResources?: boolean; // block images/fonts/media, default true
-  noSandbox?: boolean;      // --no-sandbox for containerised/root runs
+  noSandbox?: boolean;      // --no-sandbox for containers / root
 }
 ```
 
@@ -246,7 +246,7 @@ import {
 } from 'stacksniff';
 ```
 
-The canonicalization helpers dedupe the same organisation seen across sources, where names arrive with different legal suffixes, casing and diacritics. Diacritic folding is tuned for South-Slavic names (č, ć, đ, š, ž):
+The canonicalization helpers dedupe the same organisation seen across sources, when the name shows up with different legal suffixes, casing or diacritics. Folding is tuned for South-Slavic names (č, ć, đ, š, ž):
 
 ```ts
 normalizeName('Klinika Sanus d.o.o.');           // 'sanus'
@@ -256,19 +256,19 @@ canonicalKey('Studio Sanus', 'Ferhadija 5, Sarajevo'); // 'studio sanus__sarajev
 
 ## Benchmarks
 
-Run them yourself: `npm run build && npm run bench`.
+`npm run build && npm run bench`.
 
-**Detection is effectively free.** The pure `detectStack()` path — run once per page, potentially millions of times — clears a 24 KB page in **well under a millisecond**: roughly **2,000–3,000 pages/sec on a single core** (Node 20, mid-range laptop). Detection is never the bottleneck; the network is.
+`detectStack()` is cheap. On a 24 KB page it does roughly 2,000–3,000 pages/sec on one core (Node 20, a mid-range laptop), well under a millisecond each. Detection isn't the bottleneck; the network is.
 
-**The browser cost is paid once per batch, not once per page.** `probeMany` launches Chromium a single time and runs each URL in its own context, so a batch of *N* sites doesn't pay *N* cold browser starts.
+`probeMany()` launches Chromium once for the whole batch and runs each URL in its own context, so a batch of N sites doesn't pay N cold starts.
 
-The `probe`/`probeMany` wall-clock numbers are network-bound — they depend on your connection and the target sites, not on this library — so this repo ships the reproducible benchmark rather than a screenshot of numbers that wouldn't reproduce on your machine. `bench/bench.mjs` measures detection throughput, the resource-blocking trade-off, and serial-vs-pooled crawl time against live sites.
+The `probe`/`probeMany` wall-clock times depend on your connection and the target sites, not on this library, so they won't reproduce across machines. The repo ships the benchmark (`bench/bench.mjs`) rather than a fixed number: it measures detection throughput, the resource-blocking trade-off, and serial vs pooled crawl time against live sites.
 
 ## Project layout
 
 ```mermaid
 flowchart LR
-    subgraph core["core · zero runtime deps"]
+    subgraph core["core · no runtime deps"]
         SIG["signatures.ts"] --> DET["detect.ts"]
         CAN["canonical.ts"]
         FAIL["failures.ts"]
@@ -289,21 +289,21 @@ flowchart LR
     IDX --> FAIL
 ```
 
-The core (`detect`, `signatures`, `canonical`, `failures`) has **zero runtime dependencies** and is what the test suite covers. `probe` and `orchestrate` are the only modules that touch Playwright, and only at call time.
+The core (`detect`, `signatures`, `canonical`, `failures`) has no runtime dependencies and is what the tests cover. Only `probe` and `orchestrate` touch Playwright, and only when called.
 
 ## Development
 
 ```bash
-npm test        # vitest — 47 cases, no browser required
+npm test        # vitest — 47 cases, no browser needed
 npm run build   # tsc -> dist/
 npm run bench   # detection throughput + live crawl timing
 ```
 
-<a name="requirements"></a>Requires Node ≥ 20. The detection and orchestration logic is covered by unit tests over fixtures — no network, no browser — so the core stays fast to verify and safe to change. CI runs the suite on Node 20 and 22.
+Node 20+. The tests run on string fixtures, so no network or browser is involved. CI runs them on Node 20 and 22.
 
-## Provenance
+## Where it came from
 
-Extracted and generalized from the tech-detection layer of an internal lead-intelligence tool, rewritten as a standalone library with no business data attached. Built by [Jovan Jevtić](https://jjovan.com).
+I pulled the tech-detection part out of an internal lead-gen tool I built, and rewrote it as a standalone library with none of the business data attached. Built by [Jovan Jevtić](https://jjovan.com).
 
 ## License
 

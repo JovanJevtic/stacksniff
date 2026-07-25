@@ -1,7 +1,6 @@
-// A crawl at any real scale needs a failure *taxonomy*, not a bare retry loop.
-// Dead DNS is permanent and shouldn't be retried; a timeout or a reset
-// connection is transient and usually worth one more attempt. Classifying the
-// error is what lets the scheduler make that call.
+// Classify a probe failure so the caller can decide whether to retry.
+// DNS failures and bot walls are permanent; timeouts and connection resets are
+// usually transient and worth another attempt.
 
 export type FailureKind =
   | 'timeout'
@@ -11,7 +10,7 @@ export type FailureKind =
   | 'http-error'
   | 'unknown';
 
-/** Bucket a probe error by its underlying cause, reading Playwright/Chromium/Node messages. */
+/** Map a probe error to a FailureKind by matching Playwright/Chromium/Node messages. */
 export function classifyFailure(err: unknown): FailureKind {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
 
@@ -27,11 +26,7 @@ export function classifyFailure(err: unknown): FailureKind {
   return 'unknown';
 }
 
-/**
- * Whether a failure is worth retrying. Timeouts and connection blips are
- * transient; DNS, bot walls and HTTP errors will just fail again, so retrying
- * them only wastes time and looks like hammering.
- */
+/** Transient failures (timeout, connection) are worth retrying; the rest aren't. */
 export function isTransient(kind: FailureKind): boolean {
   return kind === 'timeout' || kind === 'connection';
 }

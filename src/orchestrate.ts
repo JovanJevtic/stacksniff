@@ -2,9 +2,8 @@ import { probeOnBrowser, launchArgs, type ProbeOptions, type ProbeResult } from 
 import { classifyFailure, isTransient, type FailureKind } from './failures.js';
 
 /**
- * Collapse a URL list to one URL per host. A crawl that probes ten pages of the
- * same site learns nothing new and looks like an attack — politeness is a
- * property of the schedule, not a `sleep()` bolted on later. Pure and testable.
+ * Collapse a URL list to one URL per host. Probing many pages of the same site
+ * adds little and isn't polite. Pure and testable.
  */
 export function dedupeByHost(urls: string[]): string[] {
   const seen = new Set<string>();
@@ -77,9 +76,8 @@ export async function probeMany(urls: string[], options: ProbeManyOptions = {}):
   const results: SettledProbe[] = new Array(targets.length);
   if (targets.length === 0) return results;
 
-  // Launch the browser once for the whole batch; each URL runs in its own
-  // context. Browser launch is the expensive part — paying it per URL is what
-  // makes a naive crawler slow.
+  // One browser for the whole batch; each URL gets its own context. Launching a
+  // browser per URL is the main thing that makes a batch slow.
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ args: launchArgs(noSandbox), proxy });
 
@@ -92,8 +90,7 @@ export async function probeMany(urls: string[], options: ProbeManyOptions = {}):
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         const kind = classifyFailure(error);
-        // Retry only transient failures — retrying dead DNS or a bot wall just
-        // wastes time and looks like hammering.
+        // Only retry transient failures; a DNS or bot-wall error won't change.
         if (attempt <= retries && isTransient(kind)) {
           await delay(retryBackoffMs * attempt);
           continue;

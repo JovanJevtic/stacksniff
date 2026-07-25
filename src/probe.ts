@@ -15,9 +15,8 @@ export interface ProbeOptions {
   /** Residential/datacenter proxy. Many sites block datacenter headless traffic. */
   proxy?: ProxyConfig;
   /**
-   * Block images, fonts and media at the network layer. On by default: the
-   * probe reads structure, not pixels, so on image-heavy pages and large crawls
-   * this saves real bandwidth and time.
+   * Block images, fonts and media at the network layer, on by default. The
+   * probe reads markup, not pixels, so this saves bandwidth on large crawls.
    */
   blockResources?: boolean;
   /**
@@ -51,9 +50,8 @@ export function launchArgs(noSandbox?: boolean): string[] {
 type PageOptions = Pick<ProbeOptions, 'timeoutMs' | 'userAgent' | 'blockResources'>;
 
 /**
- * Probe one URL using an already-launched browser, in its own fresh context
- * (isolated cookies and storage). This is the unit {@link probeMany} fans out —
- * one browser, many contexts — so a batch pays the launch cost once.
+ * Probe one URL on an already-launched browser, in its own fresh context
+ * (isolated cookies and storage). probeMany fans this out across one browser.
  */
 export async function probeOnBrowser(browser: Browser, url: string, options: PageOptions = {}): Promise<ProbeResult> {
   const { timeoutMs = 20_000, userAgent = DEFAULT_UA, blockResources = true } = options;
@@ -95,12 +93,10 @@ export async function probeOnBrowser(browser: Browser, url: string, options: Pag
 }
 
 /**
- * Fetch a single URL with a real headless browser and detect its SaaS/tech
- * stack. Launches and closes its own browser — for many URLs use
- * {@link probeMany}, which shares one browser across the batch.
- *
- * Playwright is a peer dependency, imported dynamically, so the detection core
- * stays dependency-free — install a browser only if you actually probe URLs.
+ * Fetch a single URL with a headless browser and detect its SaaS/tech stack.
+ * Launches and closes its own browser; for many URLs use probeMany, which
+ * shares one browser across the batch. Playwright is imported dynamically, so
+ * you only need a browser installed if you actually call this.
  */
 export async function probe(url: string, options: ProbeOptions = {}): Promise<ProbeResult> {
   const { chromium } = await import('playwright');
